@@ -44,7 +44,7 @@ unsigned long ENTRYPOINT = DEFAULT_NEON64_ENTRYPOINT;
 #define CART_DOMAIN_START_2 0x08000000UL
 #define CART_DOMAIN_END_2 0x0FFFFFFFUL
 #define EEPROM_START 0x80207700UL
-#define EEPROM_END 0x80207850UL
+#define EEPROM_SIZE 512
 
 int main(int argc, char ** argv)
 {
@@ -192,7 +192,8 @@ int main(int argc, char ** argv)
    unsigned long file_size = CART_DOMAIN_END_1 - CART_DOMAIN_START_1;
 #else
    //unsigned long file_size = CART_DOMAIN_END_2 - CART_DOMAIN_START_2;
-   unsigned long file_size = EEPROM_END - EEPROM_START;
+   //unsigned long file_size = EEPROM_END - EEPROM_START;
+   unsigned long file_size = EEPROM_SIZE;
 #endif
    unsigned char* save_buffer = malloc(file_size);
    memset((void*)save_buffer, 0x00, file_size);
