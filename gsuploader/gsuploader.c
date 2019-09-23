@@ -38,6 +38,14 @@ unsigned long ENTRYPOINT = DEFAULT_NEON64_ENTRYPOINT;
 // flag: use bulk 2x transfer?
 #define USE_BULK_RECEIVE 0 // Changed 1->0 - seems more stable
 
+#define USE_CART_DOMAIN_1 0
+#define CART_DOMAIN_START_1 0x05000508UL
+#define CART_DOMAIN_END_1 0x05FFFFFFUL
+#define CART_DOMAIN_START_2 0x08000000UL
+#define CART_DOMAIN_END_2 0x0FFFFFFFUL
+#define EEPROM_START 0x80207700UL
+#define EEPROM_END 0x80207850UL
+
 int main(int argc, char ** argv)
 {
   gscomms * g = NULL;
@@ -177,6 +185,36 @@ int main(int argc, char ** argv)
 #endif
 
 #endif
+   // Read save data from Gameshark after the interrupt hijacking completes.
+   // WARNING: Reading off of live memory can be risky so proceed with caution!
+   printf("Reading memory from cart.\n");
+#if USE_CART_DOMAIN_1
+   unsigned long file_size = CART_DOMAIN_END_1 - CART_DOMAIN_START_1;
+#else
+   //unsigned long file_size = CART_DOMAIN_END_2 - CART_DOMAIN_START_2;
+   unsigned long file_size = EEPROM_END - EEPROM_START;
+#endif
+   unsigned char* save_buffer = malloc(file_size);
+   memset((void*)save_buffer, 0x00, file_size);
+#if USE_CART_DOMAIN_1
+   ReadRAM(g, save_buffer, CART_DOMAIN_START_1, file_size);
+#else
+   //ReadRAM(g, save_buffer, CART_DOMAIN_START_2, file_size);
+   ReadRAM(g, save_buffer, EEPROM_START, file_size);
+#endif
+   printf("Reading memory complete.\n");
+   /*
+    * Delete the memory output file if it still exists
+   if (FILE* existed_file = fopen(argv[6], 'rb')){
+   	fclose(existed_file);
+   }
+   */
+   printf("Writing file...\n");
+   FILE* save_file = fopen("output.txt", "wb");
+   fwrite(save_buffer, sizeof(unsigned char), file_size, save_file);
+   fclose(save_file);
+   free(save_buffer);
+   printf("File writing complete.\n");
 
   /*Upload binary to specified address.*/
 
