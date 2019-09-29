@@ -6,7 +6,9 @@
 #include <unistd.h>
 
 #include "gscomms.h"
-//
+
+
+#define MOSCHIP_PORT_NUMBER 4
 
 static const uint16_t VENDOR_ID = 0x9710;
 static const uint16_t PRODUCT_ID = 0x7705;
@@ -328,7 +330,7 @@ unsigned char ReadWriteNibble(gscomms * g, unsigned char x) {
   while ((do_read(g)&0x10) == 0) {
     spin[0]++;
     if (spin[0] > MAX_SPIN) {
-      printf("spin[0] is stuck on %x\n", do_read(g));
+      //printf("spin[0] is stuck on %x\n", do_read(g));
       break;
     }
   }
@@ -340,7 +342,7 @@ unsigned char ReadWriteNibble(gscomms * g, unsigned char x) {
   while ((do_read(g)&0x10) == 0x10) {
     spin[1]++;
     if (spin[1] > MAX_SPIN) {
-      printf("spin[1] is stuck on %x\n", do_read(g));
+      //printf("spin[1] is stuck on %x\n", do_read(g));
       break;
     }
   }
@@ -360,7 +362,7 @@ void WriteNibble(gscomms * g, unsigned char x) {
 
 unsigned char ReadWriteByte(gscomms * g, unsigned char b) {
   unsigned char result = (ReadWriteNibble(g, b>>4)<<4)|ReadWriteNibble(g, b);
-  //printf("W:%02x R:%02x\n", b, result);
+  //printf("1byte: W:%02x R:%02x\n", b, result);
   return result;
 }
 
@@ -377,6 +379,10 @@ unsigned char ReadByte(gscomms * g) {
   return ReadWriteByte(g, 0);
 }
 
+unsigned char ReadByteFast(gscomms * g){
+  return do_raw_read(g);
+}
+
 unsigned short ReadWrite16(gscomms * g, unsigned short v) {
   unsigned short result = (((unsigned short)ReadWriteByte(g, v>> 8))<< 8) |
     ReadWriteByte(g, v);
@@ -388,7 +394,7 @@ unsigned long ReadWrite32(gscomms * g, unsigned long v) {
     (((unsigned long)ReadWriteByte(g, v>>16))<<16) |
     (((unsigned long)ReadWriteByte(g, v>> 8))<< 8) |
     ReadWriteByte(g, v);
-  //printf("W:%08lx R:%08lx\n",v, result);
+  printf("32bit: W:%08lx R:%08lx\n",v, result);
   return result;
 }
 
@@ -511,13 +517,15 @@ int ReadRAM(gscomms * g, unsigned char *buf, unsigned long address, unsigned lon
   ReadWriteByte(g, 1);
   ReadWrite32(g, address);
   ReadWrite32(g, length);
-
+  
+  printf("Reading RAM...\n");
   for (unsigned long i = 0; i < length; i++) {
     if (buf) {
       buf[i] = ReadByte(g);
     } else {
-      ReadByte(g);
+      ReadByteFast(g);
     }
+    printf("%ld out of %ld bytes read.\n", i+1, length);
   }
 
   EndTransaction(g, 0);
@@ -784,7 +792,7 @@ gscomms * setup_gscomms() {
     fprintf(stderr, "libusb_init failed: %s\n", libusb_error_name(rc));
     exit(-1);
   }
-
+  
   g->dev = libusb_open_device_with_vid_pid(g->ctx, VENDOR_ID, PRODUCT_ID);
 
   if (!g->dev) {
