@@ -50,8 +50,7 @@ FILE* fopen_g(const char* inFileName, const char* inMode)
 {
 	FILE* outFile = NULL;
 #if _WIN64 || _WIN32
-	if (fopen_s(&outFile, inFileName, inMode) != 0)
-		outFile = NULL;
+	fopen_s(&outFile, inFileName, inMode);
 #else
 	outFile = fopen(inFileName, inMode);
 #endif
