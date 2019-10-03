@@ -2,7 +2,20 @@
 #define _GSCOMMS_H
 
 #include <stdint.h>
+#if _WIN64 || _WIN32
+#include "libusb.h"
+#include <windows.h>	/* WinAPI */
+
+//sleep functions not defined on Windows
+BOOLEAN nanosleep(LONGLONG ns);
+
+inline void sleep(DWORD inMilliseconds)
+{
+	Sleep(inMilliseconds);
+}
+#else
 #include <libusb-1.0/libusb.h>
+#endif
 
 typedef struct {
   libusb_context * ctx;

@@ -1,8 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if _WIN64 || _WIN32
+#include "libusb.h"
+#include <io.h>
+#else
 #include <libusb-1.0/libusb.h>
 #include <unistd.h>
+#endif
 
 #include "codegen.h"
 #include "gscomms.h"
@@ -40,6 +45,18 @@ unsigned long ENTRYPOINT = DEFAULT_NEON64_ENTRYPOINT;
 
 #define EEPROM_START 0x80207700UL
 #define EEPROM_SIZE 512
+
+FILE* fopen_g(const char* inFileName, const char* inMode)
+{
+	FILE* outFile = NULL;
+#if _WIN64 || _WIN32
+	if (fopen_s(&outFile, inFileName, inMode) != 0)
+		outFile = NULL;
+#else
+	outFile = fopen(inFileName, inMode);
+#endif
+	return outFile;
+}
 
 int main(int argc, char ** argv)
 {
@@ -90,7 +107,7 @@ int main(int argc, char ** argv)
   }
 
   // open inputs
-  infile1 = fopen(argv[1], "rb");
+  infile1 = fopen_g(argv[1], "rb");
   if(!infile1)
   {
     printf("error opening %s\n", argv[1]);
@@ -99,7 +116,7 @@ int main(int argc, char ** argv)
   }
 
   if (two_stage) {
-    infile2 = fopen(argv[2], "rb");
+    infile2 = fopen_g(argv[2], "rb");
     if(!infile2)
     {
       printf("error opening %s\n", argv[2]);
@@ -195,7 +212,7 @@ int main(int argc, char ** argv)
    }
    */
    printf("Writing file...\n");
-   FILE* save_file = fopen("output.txt", "wb");
+   FILE* save_file = fopen_g("output.txt", "wb");
    fwrite(save_buffer, sizeof(unsigned char), file_size, save_file);
    fclose(save_file);
    free(save_buffer);

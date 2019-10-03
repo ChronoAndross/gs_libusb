@@ -1,9 +1,37 @@
-#include <libusb-1.0/libusb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <sys/time.h>
+#if _WIN64 || _WIN32
+#include "libusb.h"
+#include <io.h>
+
+/* Windows sleep in 100ns units */
+// This code is from Youka (https://gist.github.com/Youka)
+BOOLEAN nanosleep(LONGLONG ns) {
+	/* Declarations */
+	HANDLE timer;	/* Timer handle */
+	LARGE_INTEGER li;	/* Time defintion */
+	/* Create timer */
+	if (!(timer = CreateWaitableTimer(NULL, TRUE, NULL)))
+		return FALSE;
+	/* Set timer properties */
+	li.QuadPart = -ns;
+	if (!SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE)) {
+		CloseHandle(timer);
+		return FALSE;
+	}
+	/* Start & wait for timer */
+	WaitForSingleObject(timer, INFINITE);
+	/* Clean resources */
+	CloseHandle(timer);
+	/* Slept without problems */
+	return TRUE;
+}
+#else
+#include <libusb-1.0/libusb.h>
 #include <unistd.h>
+#include <sys/time.h>
+#endif
 
 #include "gscomms.h"
 
@@ -622,7 +650,7 @@ int WriteRAMfromFile(gscomms * g, FILE * infile, unsigned long address, unsigned
   if (g->mode == GSCOMMS_MODE_BULK) {
     const int maxlen = 256;
     int todo;
-    unsigned char buf[maxlen];
+    unsigned char buf[256];
     for (unsigned long i = 0; i < length; i += todo) {
       status_report(g, &status_report_time, i, length);
 
