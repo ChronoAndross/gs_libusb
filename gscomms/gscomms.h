@@ -7,12 +7,11 @@
 #include <windows.h>	/* WinAPI */
 
 //sleep functions not defined on Windows
-BOOLEAN nanosleep(LONGLONG ns);
+int nanosleep(const struct timespec *requested_delay,
+	struct timespec *remaining_delay);
 
-inline void sleep(DWORD inMilliseconds)
-{
-	Sleep(inMilliseconds);
-}
+#define sleep Sleep
+
 #else
 #include <libusb-1.0/libusb.h>
 #endif
