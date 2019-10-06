@@ -57,6 +57,111 @@ FILE* fopen_g(const char* inFileName, const char* inMode)
 	return outFile;
 }
 
+int SendInterrupt(gscomms* g, unsigned long* setup_addr, unsigned char* save_buffer, 
+	unsigned long memory_start, unsigned long file_size, int write_file)
+{
+	if (!InitGSCommsNoisy(g, RETRIES, 1)) {
+		printf("Init failed\n");
+		do_clear(g);
+		return 1;
+	}
+
+#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
+	unsigned long byte_loader_addr;
+#endif
+
+	{
+		// generate embedded code
+		code_block *setup_cb = generate_setup(ENTRYPOINT, INSN_PATCH_ADDR);
+#if USE_FAST_RECEIVE
+		code_block *receive_cb = generate_2x_receive();
+#elif USE_BULK_RECEIVE
+		code_block *receive_cb = generate_bulk_receive();
+#endif
+
+		// upload embedded code
+		unsigned long embed_addr = EMBED_ADDR;
+
+		upload_cb(g, setup_cb, embed_addr);
+		*setup_addr = embed_addr;
+		embed_addr += setup_cb->size;
+		embed_addr = (embed_addr + 3) / 4 * 4;
+
+#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
+		upload_cb(g, receive_cb, embed_addr);
+		byte_loader_addr = embed_addr;
+		embed_addr += receive_cb->size;
+		embed_addr = (embed_addr + 3) / 4 * 4;
+#endif
+
+		free_cb(setup_cb);
+#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
+		free_cb(receive_cb);
+#endif
+	}
+
+#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
+	{
+
+		code_block * recv_jal_cb = generate_jal(byte_loader_addr, "upload driver patch");
+
+		upload_cb(g, recv_jal_cb, GET_BYTE_PATCH_ADDR);
+
+		free_cb(recv_jal_cb);
+	}
+
+#if USE_FAST_RECEIVE
+	set_mode(g, GSCOMMS_MODE_FAST);
+#elif USE_BULK_RECEIVE
+	set_mode(g, GSCOMMS_MODE_BULK);
+#endif 
+
+#if 1
+	// might take a little bit for the instruction cache to turn over
+	Disconnect(g);
+	sleep(1);
+	if (!InitGSComms(g, RETRIES)) {
+		printf("Init failed\n");
+		do_clear(g);
+		return 1;
+	}
+#endif
+
+#endif
+	// Read save data from Gameshark after the interrupt hijacking completes.
+	// WARNING: Reading off of live memory can be risky so proceed with caution!
+	if (save_buffer)
+	{
+		printf("Reading memory from cart.\n");
+		ReadRAM(g, save_buffer, memory_start, file_size);
+		printf("Reading memory complete.\n");
+
+		if (write_file)
+		{
+			printf("Writing file...\n");
+			FILE* save_file = fopen_g("output.txt", "wb");
+			fwrite(save_buffer, sizeof(unsigned char), file_size, save_file);
+			fclose(save_file);
+			printf("File writing complete.\n");
+		}
+	}
+	return 0;
+}
+
+// Wrapper for Android
+void ReadN64RAM(unsigned long memory_start, unsigned long file_size)
+{
+	gscomms* g = setup_gscomms();
+	unsigned long setup_addr;
+	unsigned char* save_buffer = malloc(file_size);
+	memset((void*)save_buffer, 0x00, file_size);
+
+	int failed = SendInterrupt(g, &setup_addr, save_buffer, memory_start, file_size, 0/*dont write the file*/);
+	if (!failed)
+		; // TODO: send back to android so we can write a file based on this memory in that code.
+	free(save_buffer);
+}
+
 int main(int argc, char ** argv)
 {
   gscomms * g = NULL;
@@ -126,96 +231,16 @@ int main(int argc, char ** argv)
 
   // get in touch with the GS
   g = setup_gscomms();
-
-  if (!InitGSCommsNoisy(g, RETRIES, 1)) {
-    printf("Init failed\n");
-    do_clear(g);
-    return 1;
-  }
-
   unsigned long setup_addr;
-#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
-     unsigned long byte_loader_addr;
-#endif
+  unsigned char* save_buffer = malloc(EEPROM_SIZE);
+  memset((void*)save_buffer, 0x00, EEPROM_SIZE);
 
-  {
-    // generate embedded code
-    code_block *setup_cb = generate_setup(ENTRYPOINT, INSN_PATCH_ADDR);
-#if USE_FAST_RECEIVE
-       code_block *receive_cb = generate_2x_receive();
-#elif USE_BULK_RECEIVE
-       code_block *receive_cb = generate_bulk_receive();
-#endif
+  int failed = SendInterrupt(g, &setup_addr, save_buffer, EEPROM_START, EEPROM_SIZE, 1/*write the file*/);
+  free(save_buffer);
 
-    // upload embedded code
-    unsigned long embed_addr = EMBED_ADDR;
+  if (failed)
+	  return failed;
 
-       upload_cb(g, setup_cb, embed_addr);
-       setup_addr = embed_addr;
-       embed_addr += setup_cb->size;
-       embed_addr = (embed_addr + 3)/4*4;
-
-#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
-       upload_cb(g, receive_cb, embed_addr);
-       byte_loader_addr = embed_addr;
-       embed_addr += receive_cb->size;
-       embed_addr = (embed_addr + 3)/4*4;
-#endif
-
-    free_cb(setup_cb);
-#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
-       free_cb(receive_cb);
-#endif
-  }
-
-#if USE_FAST_RECEIVE || USE_BULK_RECEIVE
-  {
-
-    code_block * recv_jal_cb = generate_jal(byte_loader_addr, "upload driver patch");
-
-    upload_cb(g, recv_jal_cb, GET_BYTE_PATCH_ADDR);
-
-    free_cb(recv_jal_cb);
-  }
-
-#if USE_FAST_RECEIVE
-     set_mode(g, GSCOMMS_MODE_FAST);
-#elif USE_BULK_RECEIVE
-     set_mode(g, GSCOMMS_MODE_BULK);
-#endif 
-
-#if 1
-  // might take a little bit for the instruction cache to turn over
-  Disconnect(g);
-  sleep(1); 
-  if (!InitGSComms(g, RETRIES)) {
-    printf("Init failed\n");
-    do_clear(g);
-    return 1;
-  }
-#endif
-
-#endif
-   // Read save data from Gameshark after the interrupt hijacking completes.
-   // WARNING: Reading off of live memory can be risky so proceed with caution!
-   printf("Reading memory from cart.\n");
-   unsigned long file_size = EEPROM_SIZE;
-   unsigned char* save_buffer = malloc(file_size);
-   memset((void*)save_buffer, 0x00, file_size);
-   ReadRAM(g, save_buffer, EEPROM_START, file_size);
-   printf("Reading memory complete.\n");
-   /*
-    * Delete the memory output file if it still exists
-   if (FILE* existed_file = fopen(argv[6], 'rb')){
-   	fclose(existed_file);
-   }
-   */
-   printf("Writing file...\n");
-   FILE* save_file = fopen_g("output.txt", "wb");
-   fwrite(save_buffer, sizeof(unsigned char), file_size, save_file);
-   fclose(save_file);
-   free(save_buffer);
-   printf("File writing complete.\n");
 
   /*Upload binary to specified address.*/
 
